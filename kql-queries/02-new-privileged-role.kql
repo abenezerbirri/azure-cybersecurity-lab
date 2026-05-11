@@ -1,0 +1,90 @@
+// =============================================================================
+// Detection: New Privileged Role Assignment in Entra ID
+// Author: Abenezer Birri
+// MITRE ATT&CK: T1098 (Account Manipulation), T1078.004 (Cloud Accounts)
+// =============================================================================
+//
+// THREAT
+// ------
+// Attacker post-compromise persistence. After gaining access to a regular
+// user account, attackers escalate by granting themselves a privileged role
+// (Global Admin, Security Admin, etc.) to expand blast radius and establish
+// persistence. Used in SolarWinds (2020), Storm-0558 (2023), Midnight
+// Blizzard (2024), and countless smaller breaches.
+//
+// LOGIC
+// -----
+// Entra audit log: privileged role assignment via either direct active
+// assignment OR PIM eligible assignment. Both paths are caught.
+//
+// PIM CONSIDERATION (added during Phase 5 validation)
+// ----------------------------------------------------
+// Modern Entra tenants with P2 licensing route privileged role assignments
+// through Privileged Identity Management (PIM) by default. PIM eligible
+// assignments use different audit OperationName values than direct
+// assignments. Original rule only caught direct assignments and would have
+// MISSED real-world attacker persistence in PIM-enabled tenants.
+//
+// Updated rule covers:
+//   - "Add member to role" (direct active assignment)
+//   - "Add eligible member to role" (PIM eligible)
+//   - "Add eligible member to role in PIM completed" (PIM activation)
+//   - "Add eligible member to role in PIM requested" (PIM request)
+//
+// AssignmentType column distinguishes between PIM and direct paths for
+// analyst triage.
+//
+// FALSE POSITIVE CONTROL
+// ----------------------
+// - Filters to high-privilege roles only (excludes Guest Inviter, Reports
+//   Reader, etc.)
+// - Captures AssignedBy + AssignedByIP for human verification
+// - Does NOT exclude any users — every privileged role grant deserves review
+//
+// RESPONSE PLAYBOOK
+// -----------------
+// 1. Identify AssignmentType: PIM Eligible (lower urgency, role isn't
+//    active yet) vs Direct Active (higher urgency, privilege is live)
+// 2. Identify AssignedBy: is this account expected to grant roles?
+// 3. Identify AssignedTo: is there an HR/Jira/ServiceNow ticket for this hire?
+// 4. Check AssignedByIP: does it match the admin's known location?
+// 5. Verify with the admin out-of-band (call, not email)
+// 6. If any answer is "no": treat as incident. Lock both accounts, audit
+//    last 30 days, force password reset, revoke sessions.
+// =============================================================================
+
+AuditLogs
+| where TimeGenerated > ago(1h)
+| where OperationName has_any (
+    "Add member to role",
+    "Add eligible member to role",
+    "Add eligible member to role in PIM completed",
+    "Add eligible member to role in PIM requested"
+  )
+| extend RoleName = case(
+    isnotempty(tostring(parse_json(tostring(TargetResources[0].modifiedProperties))[1].newValue)),
+    tostring(parse_json(tostring(TargetResources[0].modifiedProperties))[1].newValue),
+    tostring(TargetResources[0].displayName)
+  )
+| where RoleName has_any (
+    "Global Administrator",
+    "Privileged Role Administrator",
+    "Privileged Authentication Administrator",
+    "Security Administrator",
+    "User Administrator",
+    "Exchange Administrator",
+    "SharePoint Administrator",
+    "Conditional Access Administrator",
+    "Application Administrator",
+    "Cloud Application Administrator"
+  )
+| extend AssignedTo = tostring(TargetResources[0].userPrincipalName)
+| extend AssignedBy = tostring(InitiatedBy.user.userPrincipalName)
+| extend AssignedByIP = tostring(InitiatedBy.user.ipAddress)
+| extend AssignmentType = case(
+    OperationName has "eligible", "PIM Eligible",
+    OperationName has "Add member", "Direct Active",
+    "Other"
+  )
+| project TimeGenerated, RoleName, AssignmentType, AssignedTo, AssignedBy, AssignedByIP, OperationName, Result
+| order by TimeGenerated desc

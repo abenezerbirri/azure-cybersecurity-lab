@@ -1,0 +1,50 @@
+// =============================================================================
+// Detection: Windows Account Lockout (Event ID 4740)
+// Author: Abenezer Birri
+// MITRE ATT&CK: T1110 (Brute Force) — confirmed pattern
+// =============================================================================
+//
+// THREAT
+// ------
+// Account lockouts occur when failed authentication attempts hit the AD
+// lockout threshold (5 attempts per Phase 2 GPO). Lockout is the on-prem
+// equivalent of detecting brute force success — the attacker burned at
+// least 5 password attempts on this account before tripping the lock.
+//
+// LOGIC
+// -----
+// Windows SecurityEvent table, EventID 4740 (Account Locked Out).
+//
+// PAIRS WITH
+// ----------
+// Rule 01 (Failed Sign-In Burst, cloud): early warning of brute force in progress
+// Rule 04 (this rule, on-prem): confirmation that brute force hit the threshold
+//
+// FALSE POSITIVE CONTROL
+// ----------------------
+// - No automatic FP filtering — every lockout deserves review
+// - Real users mistype passwords; legitimate fires are common
+// - Triage rule: did the user contact helpdesk to unlock?
+//
+// RESPONSE PLAYBOOK
+// -----------------
+// 1. Identify LockedAccount: privileged or regular user?
+// 2. If privileged (admin01, svc-*): treat as high-priority incident
+// 3. Check recent SecurityEvents 4625 (failed logon) for that account:
+//    - Same source IP each time = brute force from one host
+//    - Many source IPs = distributed attack
+//    - Same source as the user's normal location = likely user typo
+// 4. Force password reset if attack confirmed; unlock if user typo
+// 5. If brute force: investigate the source host (compromised endpoint?)
+// =============================================================================
+
+SecurityEvent
+| where TimeGenerated > ago(1h)
+| where EventID == 4740
+| project TimeGenerated,
+          LockedAccount = TargetUserName,
+          LockedDomain = TargetDomainName,
+          LockoutComputer = Computer,
+          ReportingSource = SubjectUserName,
+          Activity
+| order by TimeGenerated desc

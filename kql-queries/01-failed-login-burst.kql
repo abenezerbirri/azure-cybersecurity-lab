@@ -1,0 +1,47 @@
+// =============================================================================
+// Detection: Failed Sign-In Burst (Password Spray / Brute Force)
+// Author: Abenezer Birri
+// MITRE ATT&CK: T1110 (Brute Force), T1110.003 (Password Spraying)
+// =============================================================================
+//
+// THREAT
+// ------
+// Detects clusters of failed authentication attempts indicative of:
+//   - Password spray: attacker tries common passwords across many accounts
+//   - Brute force: attacker tries many passwords against one account
+//
+// LOGIC
+// -----
+// 5+ failed sign-ins to the same account within a 5-minute window
+//
+// FALSE POSITIVE CONTROL
+// ----------------------
+// - Excludes already-locked (50053) and disabled (50057) accounts
+// - 5-attempt threshold reduces single-mistype noise
+// - Captures unique source IPs to distinguish single-source brute force
+//   from distributed password spray
+//
+// RESPONSE PLAYBOOK
+// -----------------
+// 1. Check UniqueIPs: 1 IP = brute force; many IPs = password spray
+// 2. Validate UserPrincipalName is real (not a typo'd account)
+// 3. If admin account targeted: lock account, force password reset, audit
+//    recent successful sign-ins for that user
+// 4. If many users hit: search for common patterns (same IP, same timeframe)
+// 5. Block source IPs at firewall if confirmed malicious
+// =============================================================================
+
+SigninLogs
+| where TimeGenerated > ago(1h)
+| where ResultType != 0
+| where ResultType !in (50053, 50057)
+| summarize FailedAttempts = count(),
+            FirstAttempt = min(TimeGenerated),
+            LastAttempt = max(TimeGenerated),
+            UniqueIPs = dcount(IPAddress),
+            IPs = make_set(IPAddress, 10),
+            FailureCodes = make_set(ResultType, 10)
+            by UserPrincipalName, bin(TimeGenerated, 5m)
+| where FailedAttempts >= 5
+| project TimeGenerated, UserPrincipalName, FailedAttempts, UniqueIPs, IPs, FailureCodes, FirstAttempt, LastAttempt
+| order by FailedAttempts desc

@@ -1,0 +1,54 @@
+// =============================================================================
+// Detection: Off-Hours Admin Sign-In
+// Author: Abenezer Birri
+// MITRE ATT&CK: T1078 (Valid Accounts), T1078.004 (Cloud Accounts)
+// =============================================================================
+//
+// THREAT
+// ------
+// Stolen admin credentials being used by an attacker in a different timezone.
+// Verizon DBIR consistently ranks stolen credentials as the #1 initial access
+// vector in breaches. Detecting anomalous *use* of valid credentials is one
+// of the few ways to catch attackers operating with legitimate auth material.
+//
+// LOGIC
+// -----
+// Successful sign-in by a privileged user (UPN contains admin/administrator/
+// cloudadmin/svc-) outside 7 AM - 7 PM Pacific weekdays, OR on a weekend.
+//
+// FALSE POSITIVE CONTROL
+// ----------------------
+// - Filters to admin/service accounts via UPN pattern matching
+// - Captures Country/City for geo-anomaly investigation
+// - Captures IP and ConditionalAccessStatus for full context
+//
+// LIMITATIONS
+// -----------
+// - Real admins do work off-hours; this rule WILL produce false positives
+// - For production, combine with: known-IP allowlist, first-time-IP detection,
+//   or unusual-country geofencing.
+// - DST handling is simplified (-8 fixed offset, not -7 during PDT)
+//
+// RESPONSE PLAYBOOK
+// -----------------
+// 1. Verify out-of-band: call the admin and ask "did you just sign in?"
+// 2. Check Country/City: matches admin's known location?
+// 3. Check IPAddress: matches admin's known home/office/VPN IP?
+// 4. Check sign-in history: this IP seen before for this user?
+// 5. If any unexpected: revoke session, force password reset, audit recent
+//    activity, check for newly-granted permissions
+// =============================================================================
+
+SigninLogs
+| where TimeGenerated > ago(1h)
+| where ResultType == 0
+| extend HourPST = datetime_add('Hour', -8, TimeGenerated)
+| extend HourOfDay = datetime_part("hour", HourPST)
+| extend DayOfWeek = dayofweek(HourPST)
+| where (HourOfDay < 7 or HourOfDay >= 19)
+   or DayOfWeek == 6d or DayOfWeek == 0d
+| where UserPrincipalName has_any ("admin", "administrator", "cloudadmin", "svc-")
+| extend Country = tostring(LocationDetails.countryOrRegion)
+| extend City = tostring(LocationDetails.city)
+| project TimeGenerated, HourPST, UserPrincipalName, IPAddress, Country, City, AppDisplayName, ConditionalAccessStatus
+| order by TimeGenerated desc

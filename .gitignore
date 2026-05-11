@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor / IDE
+*.swp
+*~
+.vscode/
+.idea/
+*.sublime-*
+
+# Secrets — never commit
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+*.crt
+id_rsa
+id_rsa.pub
+known_hosts
+credentials.json
+secrets.yaml
+
+# Unredacted source material (keep local only)
+originals/
+unredacted/
+raw-screenshots/
+*-original.*
+*-unredacted.*
+
+# Azure / cloud tool artifacts
+.azure/
+*.publishsettings
+azureauth.json
+
+# Python / Node residue if you ever add scripts
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+venv/
+
+# Logs and temp
+*.log
+*.tmp
+tmp/

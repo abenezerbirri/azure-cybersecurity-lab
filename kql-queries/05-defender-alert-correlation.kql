@@ -1,0 +1,112 @@
+// =============================================================================
+// Detection: Defender for Endpoint Alert + Sign-In Correlation (3-table)
+// Author: Abenezer Birri
+// MITRE ATT&CK: Multi-tactic — correlates endpoint + identity kill chain phases
+// =============================================================================
+//
+// THREAT
+// ------
+// When Defender for Endpoint fires an alert, the SOC needs to know what
+// authentication activity happened around the same time:
+//   - Was someone signed in to the host when malicious activity occurred?
+//   - Where did that user authenticate from (cloud session)?
+//   - Did the affected user authenticate to other systems near the alert?
+//
+// LOGIC (3-table correlation via host bridge)
+// -------------------------------------------
+//   1. SecurityAlert: Defender alerts with EntityType = host
+//   2. SecurityEvent: who logged onto that host? (EventID 4624)
+//   3. SigninLogs: that user's cloud sign-in for full attribution
+//
+// WHY 3 TABLES (real-world finding from Phase 5 validation)
+// ---------------------------------------------------------
+// Initial 2-table version joined SecurityAlert directly with SigninLogs
+// on EntityType = "account". This works for identity-targeted alerts
+// (suspicious sign-ins, identity protection) but FAILS for the majority
+// of Defender alerts.
+//
+// Most Defender alerts (file write, process injection, suspicious binary
+// execution) tag the file/process/host as the affected entity, NOT a
+// user. EICAR test alert during validation tagged: 2 file entities,
+// 2 host entities, 0 account entities. The 2-table join had nothing to
+// match against.
+//
+// Fix: introduce SecurityEvent (Windows EventID 4624 logons) as a bridge.
+// Defender knows WHICH HOST was attacked. Windows logs know WHICH USER
+// was on that host. Together they reconstruct the missing user attribution.
+//
+// VALUE PROPOSITION
+// -----------------
+// This rule does not create new detections. Defender already fired the
+// alert. The rule's value is *enrichment*: it pre-correlates user + host
+// + cloud auth context so the analyst doesn't have to manually pivot
+// across three tables. At scale, saves hours per incident.
+//
+// IDENTITY NORMALIZATION
+// ----------------------
+// Hybrid identity environments use different identity formats per data
+// source. This rule normalizes to a common short-name format:
+//   - Defender host:   "client01"
+//   - SecurityEvent:   "CLIENT01.cyberlab.local" → split → "client01"
+//   - SigninLogs UPN:  "jsmith@...onmicrosoft.com" → split → "jsmith"
+//   - SecurityEvent:   "jsmith"
+//
+// LogonType filter retains only interactive logons (2, 7, 10, 11) to
+// exclude background service logons that don't represent active users.
+//
+// FALSE POSITIVE CONTROL
+// ----------------------
+// - Inner join only returns matched rows (no orphaned alerts)
+// - 2-hour windows are generous; production tuning would narrow per
+//   alert type
+// - Excludes machine accounts and built-in service accounts
+//
+// RESPONSE PLAYBOOK
+// -----------------
+// 1. Defender alert is the primary signal — investigate per Defender's guidance
+// 2. Use this rule's output to answer:
+//    - "Who was on the affected host at alert time?" (LogonUser)
+//    - "Where was that user authenticated from?" (IPAddress, Country)
+//    - "Did they authenticate to anything else around the alert?"
+// 3. If sign-in IP/location is anomalous: scope incident wider, assume
+//    credential compromise alongside endpoint compromise
+// 4. If sign-in is expected: focus investigation on the endpoint vector
+// =============================================================================
+
+let alerts = SecurityAlert
+| where TimeGenerated > ago(3h)
+| where ProductName == "Microsoft Defender Advanced Threat Protection"
+| extend EntitiesParsed = parse_json(Entities)
+| mv-expand entity = EntitiesParsed
+| extend EntityType = tostring(entity.Type)
+| extend AlertHost = tolower(tostring(entity.HostName))
+| where EntityType == "host"
+| project AlertTime = TimeGenerated, AlertName, AlertSeverity, AlertHost,
+          AlertId = SystemAlertId, Description;
+let logons = SecurityEvent
+| where TimeGenerated > ago(4h)
+| where EventID == 4624
+| where LogonType in (2, 7, 10, 11)
+| where TargetUserName !endswith "$"
+| where TargetUserName !in~ ("SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE", "DWM-1", "UMFD-0", "UMFD-1")
+| extend LogonHost = tolower(tostring(Computer))
+| extend LogonHostShort = tolower(tostring(split(Computer, ".")[0]))
+| project LogonTime = TimeGenerated, LogonHost, LogonHostShort,
+          LogonUser = TargetUserName, LogonDomain = TargetDomainName;
+let signins = SigninLogs
+| where TimeGenerated > ago(4h)
+| where ResultType == 0
+| extend SigninUserShort = tolower(tostring(split(UserPrincipalName, "@")[0]))
+| project SigninTime = TimeGenerated, UserPrincipalName, SigninUserShort,
+          IPAddress, AppDisplayName, Country = tostring(LocationDetails.countryOrRegion);
+alerts
+| join kind=inner (logons) on $left.AlertHost == $right.LogonHostShort
+| where LogonTime between (AlertTime - 2h .. AlertTime + 30m)
+| extend LogonUserShort = tolower(LogonUser)
+| join kind=inner (signins) on $left.LogonUserShort == $right.SigninUserShort
+| where SigninTime between (AlertTime - 2h .. AlertTime + 2h)
+| project AlertTime, AlertName, AlertSeverity, AlertHost,
+          LogonUser, LogonTime,
+          UserPrincipalName, SigninTime, IPAddress, Country, AppDisplayName,
+          Description
+| order by AlertTime desc
