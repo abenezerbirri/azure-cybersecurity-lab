@@ -2,7 +2,7 @@
 
 > A six-phase Microsoft Azure cybersecurity lab covering Active Directory, hybrid identity, endpoint management, SIEM detection engineering, and adversary emulation. End-to-end: built the infrastructure, wrote the detections, attacked the environment from a Kali box on the same network, validated every rule against real attack data, and rebuilt two of them after the validation phase exposed production-relevant gaps.
 
-abenezerbirri/azure-cybersecurity-lab/architecture/rg-cyberlab.svg
+![abenezerbirri/azure-cybersecurity-lab/architecture/rg-cyberlab.svg](architecture/rg-cyberlab.svg)
 ---
 
 ## What this lab demonstrates
