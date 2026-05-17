@@ -127,7 +127,7 @@ Full attack documentation, detection rule responses, and engineering findings ar
 │   ├── 03-off-hours-admin-signin.kql
 │   ├── 04-account-lockout.kql
 │   └── 05-defender-alert-correlation.kql
-└── screenshots/               Evidence captures per phase (redacted)
+└── screenshots/               Evidence captures per phase
 ```
 
 ---
