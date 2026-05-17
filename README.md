@@ -141,5 +141,12 @@ This repository documents the lab as it stands. Continued work is tracked separa
 - Additional detection coverage for token-based attacks, non-interactive sign-in monitoring, and network-layer reconnaissance
 
 ---
+---
+
+## Contact & More
+
+- **LinkedIn:** [Abenezer Birri](https://www.linkedin.com/in/abenezer-birri/)
+- **GitHub:** [@abenezerbirri](https://github.com/abenezerbirri)
+- Questions? Open an [Issue](https://github.com/abenezerbirri/azure-cybersecurity-lab/issues)
 
 *Built by [Abenezer Birri](https://github.com/abenezerbirri) — feedback and questions welcome via [Issues](https://github.com/abenezerbirri/azure-cybersecurity-lab/issues).*
