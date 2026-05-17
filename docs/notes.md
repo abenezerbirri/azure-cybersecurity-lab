@@ -106,9 +106,8 @@ extends from.
 
 **Identity content:**
 - 5 users with realistic role separation (employees, IT admin, service
-  account) ![alt text](../screenshots/phase2-aduc-employees-populated.png)
-- 3 security groups for role-based access control ![alt text](../screenshots/phase2-gpos.png)
-
+  account)
+- 3 security groups for role-based access control 
 - Password policy GPO tightening domain defaults (8+ char minimum,
   complexity required, lockout after 5 failed attempts)
 - USB block GPO targeted at Employees OU — common DoD/DISA STIG pattern
