@@ -106,7 +106,7 @@ extends from.
 
 **Identity content:**
 - 5 users with realistic role separation (employees, IT admin, service
-  account)![alt text](../screenshots/phase2-aduc-tree.png)
+  account) ![alt text](../screenshots/phase2-aduc-employees-populated.png)
 - 3 security groups for role-based access control ![alt text](../screenshots/phase2-gpos.png)
 
 - Password policy GPO tightening domain defaults (8+ char minimum,
