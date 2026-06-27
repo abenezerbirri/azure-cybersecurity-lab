@@ -2,14 +2,15 @@
 
 > A six-phase Microsoft Azure cybersecurity lab covering Active Directory, hybrid identity, endpoint management, SIEM detection engineering, and adversary emulation. End-to-end: built the infrastructure, wrote the detections, attacked the environment from a Kali box on the same network, validated every rule against real attack data, and rebuilt two of them after the validation phase exposed production-relevant gaps.
 
-![abenezerbirri/azure-cybersecurity-lab/architecture/rg-cyberlab.svg](architecture/rg-cyberlab.svg)
+![Lab architecture](architecture/rg-cyberlab.svg)
+
 ---
 
 ## What this lab demonstrates
 
 The lab progressed from "I built a SIEM" to "I purple-teamed my own SIEM, broke it intentionally, fixed what I found, and documented every lesson."
 
-A single user identity (`jsmith`) created in PowerShell on the on-prem Domain Controller authenticates across on-prem domain logon, Microsoft 365 cloud services, and managed device enrollment. A single endpoint (`vm-client01`) is simultaneously domain-joined, Workplace-Joined to Entra, EDR-managed by Microsoft Defender for Endpoint, and MDM-managed by Microsoft Intune — the architecture pattern most enterprises operate today.
+A single user identity (`jsmith`) created in PowerShell on the on-prem Domain Controller authenticates across on-prem domain logon, Microsoft 365 cloud services, and managed device enrollment. A single endpoint (`vm-client01`) is simultaneously domain-joined, registered to Entra via Workplace Join (the lab skipped device sync, so the device is registered rather than fully Hybrid Azure AD Joined), EDR-managed by Microsoft Defender for Endpoint, and MDM-managed by Microsoft Intune — closely mirroring the hybrid endpoint architecture most enterprises operate today.
 
 On top of that hybrid identity environment, Microsoft Sentinel ingests three data sources (Entra sign-in/audit logs, Windows Security Events via Azure Monitor Agent and Data Collection Rules, and Defender for Endpoint alerts) and runs five custom KQL detection rules covering brute force, privilege escalation, anomalous admin behavior, on-prem account lockout, and 3-table EDR-to-identity correlation. Every rule was validated against real attack traffic from a Kali Linux machine on the same virtual network — and two of them needed substantial re-engineering once the real attack data revealed what the original detection logic missed.
 
@@ -38,9 +39,9 @@ All five rules are committed as annotated `.kql` files. Each rule's header docum
 
 | # | Rule | MITRE ATT&CK | Severity | What it catches |
 |---|------|--------------|----------|-----------------|
-| 01 | [Failed Sign-In Burst](kql-queries/01-failed-login-burst.kql) | T1110 — Brute Force | Medium | 5+ Entra sign-in failures from one user in a 5-minute window |
+| 01 | [Failed Sign-In Burst](kql-queries/01-failed-login-burst.kql) | T1110 — Brute Force | Medium | 5+ Entra sign-in failures from one user within a 5-minute fixed time bucket |
 | 02 | [New Privileged Role Assignment](kql-queries/02-new-privileged-role.kql) | T1098 — Account Manipulation | High | Admin role granted to any user, including PIM eligible assignments |
-| 03 | [Off-Hours Admin Sign-In](kql-queries/03-off-hours-admin-signin.kql) | T1078 — Valid Accounts | Low | Admin authentication outside defined business hours |
+| 03 | [Off-Hours Admin Sign-In](kql-queries/03-off-hours-admin-signin.kql) | T1078 — Valid Accounts | Low | Successful sign-in outside business hours by accounts with "admin"/"adm" in the UPN |
 | 04 | [Windows Account Lockout](kql-queries/04-account-lockout.kql) | T1110 — Brute Force | Medium | On-prem Event ID 4740 on the Domain Controller |
 | 05 | [Defender Alert + Sign-In Correlation](kql-queries/05-defender-alert-correlation.kql) | Multi-tactic | Medium | 3-table host-bridged correlation: Defender alert → host logon → cloud sign-in |
 
@@ -127,7 +128,7 @@ Full attack documentation, detection rule responses, and engineering findings ar
 │   ├── 03-off-hours-admin-signin.kql
 │   ├── 04-account-lockout.kql
 │   └── 05-defender-alert-correlation.kql
-└── screenshots/               Evidence captures per phase
+└── screenshots/               Evidence captures per phase (redacted)
 ```
 
 ---
